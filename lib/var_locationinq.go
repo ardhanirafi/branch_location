@@ -1,12 +1,14 @@
 package lib
 
 import (
-	"os"
+	"github.com/gomodul/envy"
 )
 
 var (
-	dbport = os.Getenv("mysql_port")
-	dbaddr = os.Getenv("mysql_addr")
+	dbport  = envy.Get("mysql_port")
+	dbaddr  = envy.Get("mysql_addr")
+	dbtable = envy.Get("mysql_db")
+	dbusn   = envy.Get("mysql_usn")
 	// Graylog_Host = os.Getenv("Graylog_Host")
 	// Graylog_Port_Traffic = os.Getenv("Graylog_Port_Traffic")
 	// Graylog_Port_Error = os.Getenv("Graylog_Port_Error")

@@ -124,45 +124,44 @@ func MbLocInq(c *gin.Context) {
 	// })
 }
 
+// ConnectToDatabase membangun dan membuka koneksi database MySQL menggunakan parameter yang diberikan.
+// Mengembalikan instance *gorm.DB yang siap digunakan, atau error jika koneksi gagal.
+func ConnectToDatabase(dbusn, dbaddr, dbport, dbtable string) (*gorm.DB, error) {
+	dsn := dbusn + ":@tcp(" + dbaddr + ":" + dbport + ")/" + dbtable
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	if err != nil {
+		return nil, err
+	}
+	return db, nil
+}
+
 // Inside the lib package
 
 func MbDeleteATM(c *gin.Context) {
-	//mengambil nilai dari parameter "id" dari URL dengan menggunakan c.Param("id")
 	ID := c.Param("id")
 	if ID == "" {
 		c.JSON(400, gin.H{"error": "Invalid request data: ID parameter is required"})
 		return
 	}
-	//konversi menjadi integer menggunakan strconv.Atoi(ID)
-	idInt, err := strconv.Atoi(ID)
-	if err != nil {
-		c.JSON(400, gin.H{"error": "Invalid request data: ID parameter must be an integer"})
-		return
-	}
-	/*
-		koneksi ke database Parameter pertama adalah tipe database yang digunakan ("mysql"),
-		diikuti oleh informasi koneksi seperti username, password, host, dan port.
-		Jika terjadi error dalam pembukaan koneksi,
-		fungsi akan memberikan respons HTTP dengan status 500 (Internal Server Error) dan mengembalikan error yang terjadi
-	*/
-	db, err := sql.Open("mysql", "root:@tcp("+"localhost"+":"+"3306"+")/mnc")
-	if err != nil {
-		c.AbortWithError(500, err)
-		return
-	}
-	//defer db.Close(). Hal ini memastikan bahwa koneksi database akan ditutup
-	defer db.Close()
 
-	_, err = db.Exec("DELETE FROM mb_atm_location WHERE id = ?", idInt)
+	// Initialize the GORM DB connection
+	db, err := ConnectToDatabase(dbusn, dbaddr, dbport, dbtable)
 	if err != nil {
 		c.AbortWithError(500, err)
 		return
 	}
-	/*
-		Jika eksekusi query berhasil, fungsi akan memberikan respons HTTP dengan status 200 (OK)
-		dan mengembalikan objek JSON yang berisi pesan sukses bahwa data ATM berhasil dihapus.
-	*/
-	c.JSON(200, gin.H{"message": "ATM data deleted successfully"})
+
+	var mbAtmLocation MbAtmLocationsDelete
+
+	// Delete the bank location entry
+	result := db.Table("mb_atm_location").Where("id = ?", ID).Delete(&mbAtmLocation)
+
+	if result.Error != nil {
+		c.AbortWithError(500, result.Error)
+		return
+	}
+
+	c.JSON(200, gin.H{"message": "Bank data deleted successfully"})
 }
 
 func MbDeleteBank(c *gin.Context) {
@@ -172,20 +171,32 @@ func MbDeleteBank(c *gin.Context) {
 		return
 	}
 
-	idInt, err := strconv.Atoi(ID)
-	if err != nil {
-		c.JSON(400, gin.H{"error": "Invalid request data: ID parameter must be an integer"})
-		return
-	}
+	// idInt, err := strconv.Atoi(ID)
+	// if err != nil {
+	// 	c.JSON(400, gin.H{"error": "Invalid request data: ID parameter must be an integer"})
+	// 	return
+	// }
 
-	db, err := gorm.Open(mysql.Open("root:@tcp("+"localhost"+":"+"3306"+")/mnc"), &gorm.Config{})
+	// Initialize the GORM DB connection
+	db, err := ConnectToDatabase(dbusn, dbaddr, dbport, dbtable)
 	if err != nil {
 		c.AbortWithError(500, err)
 		return
 	}
 
-	var mbBankLocation mb_bank_location
-	result := db.Where("id = ?", idInt).Delete(&mbBankLocation)
+	var mbBankLocation MbBankLocationsDelete
+
+	// Find the bank location entry by ID
+	// result := db.Table("mb_bank_location").First(&mbBankLocation, idInt)
+
+	// if result.Error != nil {
+	// 	c.AbortWithError(500, result.Error)
+	// 	return
+	// }
+
+	// Delete the bank location entry
+	result := db.Table("mb_bank_location").Where("id = ?", ID).Delete(&mbBankLocation)
+
 	if result.Error != nil {
 		c.AbortWithError(500, result.Error)
 		return
@@ -195,19 +206,21 @@ func MbDeleteBank(c *gin.Context) {
 }
 
 func MbBankAdd(c *gin.Context) {
+	// Mengambil data JSON dari permintaan dan melakukan binding ke variabel req
 	var req MbLocationReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
-	dsn := "root:@tcp(" + "localhost" + ":" + "3306" + ")/mnc"
-	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	// Membangun string DSN untuk koneksi ke basis data MySQL
+	db, err := ConnectToDatabase(dbusn, dbaddr, dbport, dbtable)
 	if err != nil {
 		c.AbortWithError(500, err)
 		return
 	}
 
+	// Membentuk data lokasi bank baru
 	mbBankLocations := mb_bank_location{
 		Utype:     req.Utype,
 		Name:      req.Name,
@@ -225,49 +238,70 @@ func MbBankAdd(c *gin.Context) {
 		CreatedAt: time.Now(),
 	}
 
+	// Mengubah data menjadi format JSON
 	var request map[string]interface{}
 	temp, _ := json.Marshal(mbBankLocations)
 	json.Unmarshal(temp, &request)
 
+	// Memasukkan data ke dalam basis data
 	result := db.Debug().Table("mb_bank_location").Create(&request)
 	if result.Error != nil {
 		c.AbortWithError(500, result.Error)
 		return
 	}
 
+	// Mengirim respons sukses
 	c.JSON(200, gin.H{"message": "Bank data added successfully"})
 }
 
 func MbAtmAdd(c *gin.Context) {
+	// Mengambil data JSON dari permintaan dan melakukan binding ke variabel req
 	var req MbLocationReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
-	currentTime := time.Now().Format(time.RFC3339)
-
-	db, err := sql.Open("mysql", "root:@tcp("+"localhost"+":"+"3306"+")/mnc")
-	if err != nil {
-		c.AbortWithError(500, err)
-		return
-	}
-	defer db.Close()
-
-	_, err = db.Exec(`
-		INSERT INTO mb_atm_location (
-			utype, NAME, address, city, postcode, state, country,
-			phone, fax, email, biz_hour, latitude, longitude,
-			created, modified
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, req.Utype, req.Name, req.Addr, req.City, req.Postcode, req.State, req.Country,
-		req.Phone, req.Fax, req.Email, req.Bizhour, req.Latitude, req.Longitude, currentTime, nil)
-
+	db, err := ConnectToDatabase(dbusn, dbaddr, dbport, dbtable)
 	if err != nil {
 		c.AbortWithError(500, err)
 		return
 	}
 
+	// Membentuk data lokasi ATM baru
+	mbAtmLocations := mb_atm_location{
+		Utype:     req.Utype,
+		Name:      req.Name,
+		Address:   req.Addr,
+		City:      req.City,
+		Postcode:  req.Postcode,
+		State:     req.State,
+		Country:   req.Country,
+		Phone:     req.Phone,
+		Fax:       req.Fax,
+		Email:     req.Email,
+		Bizhour:   req.Bizhour,
+		Latitude:  req.Latitude,
+		Longitude: req.Longitude,
+		CreatedAt: time.Now(),
+	}
+
+	// Mengubah data menjadi format JSON
+	var request map[string]interface{}
+	temp, _ := json.Marshal(mbAtmLocations)
+	json.Unmarshal(temp, &request)
+
+	// Mencetak data dalam format JSON
+	fmt.Println(request)
+
+	// Memasukkan data ke dalam basis data
+	result := db.Debug().Table("mb_atm_location").Create(&request)
+	if result.Error != nil {
+		c.AbortWithError(500, result.Error)
+		return
+	}
+
+	// Mengirim respons sukses
 	c.JSON(200, gin.H{"message": "ATM data added successfully"})
 }
 
@@ -290,98 +324,80 @@ func MbBankUpdate(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-
-	currentTime := time.Now().Format(time.RFC3339)
-
-	db, err := sql.Open("mysql", "root:@tcp("+"localhost"+":"+"3306"+")/mnc")
+	fmt.Println(dbusn, dbaddr, dbport, dbtable)
+	// Inisialisasi koneksi database menggunakan GORM
+	db, err := ConnectToDatabase(dbusn, dbaddr, dbport, dbtable)
 	if err != nil {
 		c.AbortWithError(500, err)
 		return
 	}
-	defer db.Close()
 
-	updateQuery := "UPDATE mb_bank_location SET"
-	values := []interface{}{}
+	var bankLocation MbBankLocation
+	if err := db.Unscoped().Where("id = ?", idInt).First(&bankLocation).Error; err != nil {
+		c.AbortWithError(500, err)
+		return
+	}
 
-	updateQuery += " modified = ?,"
-	values = append(values, currentTime)
-
+	// Update nilai-nilai yang diperlukan
 	if req.Name != "" {
-		updateQuery += " NAME = ?,"
-		values = append(values, req.Name)
-	}
-
-	if req.Email != "" {
-		updateQuery += " email = ?,"
-		values = append(values, req.Email)
-	}
-
-	if req.Utype != "" {
-		updateQuery += " utype = ?,"
-		values = append(values, req.Utype)
+		bankLocation.Name = req.Name
 	}
 
 	if req.Addr != "" {
-		updateQuery += " address = ?,"
-		values = append(values, req.Addr)
+		bankLocation.Address = req.Addr
+	}
+
+	if req.Email != "" {
+		bankLocation.Email = req.Email
+	}
+
+	if req.Utype != "" {
+		bankLocation.Utype = req.Utype
 	}
 
 	if req.City != "" {
-		updateQuery += " city = ?,"
-		values = append(values, req.City)
+		bankLocation.City = req.City
 	}
 
 	if req.Postcode != "" {
-		updateQuery += " postcode = ?,"
-		values = append(values, req.Postcode)
+		bankLocation.Postcode = req.Postcode
 	}
 
 	if req.State != "" {
-		updateQuery += " state = ?,"
-		values = append(values, req.State)
+		bankLocation.State = req.State
 	}
 
 	if req.Country != "" {
-		updateQuery += " country = ?,"
-		values = append(values, req.Country)
+		bankLocation.Country = req.Country
 	}
 
 	if req.Phone != "" {
-		updateQuery += " phone = ?,"
-		values = append(values, req.Phone)
+		bankLocation.Phone = req.Phone
 	}
 
 	if req.Fax != "" {
-		updateQuery += " fax = ?,"
-		values = append(values, req.Fax)
+		bankLocation.Fax = req.Fax
 	}
 
 	if req.Bizhour != "" {
-		updateQuery += " biz_hour = ?,"
-		values = append(values, req.Bizhour)
+		bankLocation.BizHour = req.Bizhour
 	}
 
 	if req.Latitude != "" {
-		updateQuery += " latitude = ?,"
-		values = append(values, req.Latitude)
+		bankLocation.Latitude = req.Latitude
 	}
 
 	if req.Longitude != "" {
-		updateQuery += " longitude = ?,"
-		values = append(values, req.Longitude)
+		bankLocation.Longitude = req.Longitude
 	}
+	bankLocation.Modified = time.Now().Format(time.RFC3339)
 
-	updateQuery = strings.TrimSuffix(updateQuery, ",")
-
-	updateQuery += " WHERE id = ?"
-	values = append(values, idInt)
-
-	_, err = db.Exec(updateQuery, values...)
-
-	if err != nil {
+	// Lakukan perubahan pada database
+	if err := db.Unscoped().Omit("created_at", "updated_at", "deleted_at").Save(&bankLocation).Error; err != nil {
 		c.AbortWithError(500, err)
 		return
 	}
+
 	c.JSON(200, gin.H{"message": "Bank data updated successfully"})
 }
 
@@ -404,96 +420,77 @@ func MbAtmUpdate(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-
-	currentTime := time.Now().Format(time.RFC3339)
-
-	db, err := sql.Open("mysql", "root:@tcp("+"localhost"+":"+"3306"+")/mnc")
+	fmt.Println(dbusn, dbaddr, dbport, dbtable)
+	// Inisialisasi koneksi database menggunakan GORM
+	db, err := ConnectToDatabase(dbusn, dbaddr, dbport, dbtable)
 	if err != nil {
 		c.AbortWithError(500, err)
 		return
 	}
-	defer db.Close()
 
-	updateQuery := "UPDATE mb_atm_location SET"
-	values := []interface{}{}
+	var atmLocation MbAtmLocation
+	if err := db.Unscoped().Where("id = ?", idInt).Omit("modified", "created_at", "updated_at", "deleted_at").First(&atmLocation).Error; err != nil {
+		c.AbortWithError(500, err)
+		return
+	}
 
-	updateQuery += " modified = ?,"
-	values = append(values, currentTime)
-
+	// Update nilai-nilai yang diperlukan
 	if req.Name != "" {
-		updateQuery += " NAME = ?,"
-		values = append(values, req.Name)
-	}
-
-	if req.Email != "" {
-		updateQuery += " email = ?,"
-		values = append(values, req.Email)
-	}
-
-	if req.Utype != "" {
-		updateQuery += " utype = ?,"
-		values = append(values, req.Utype)
+		atmLocation.Name = req.Name
 	}
 
 	if req.Addr != "" {
-		updateQuery += " address = ?,"
-		values = append(values, req.Addr)
+		atmLocation.Address = req.Addr
+	}
+
+	if req.Email != "" {
+		atmLocation.Email = req.Email
+	}
+
+	if req.Utype != "" {
+		atmLocation.Utype = req.Utype
 	}
 
 	if req.City != "" {
-		updateQuery += " city = ?,"
-		values = append(values, req.City)
+		atmLocation.City = req.City
 	}
 
 	if req.Postcode != "" {
-		updateQuery += " postcode = ?,"
-		values = append(values, req.Postcode)
+		atmLocation.Postcode = req.Postcode
 	}
 
 	if req.State != "" {
-		updateQuery += " state = ?,"
-		values = append(values, req.State)
+		atmLocation.State = req.State
 	}
 
 	if req.Country != "" {
-		updateQuery += " country = ?,"
-		values = append(values, req.Country)
+		atmLocation.Country = req.Country
 	}
 
 	if req.Phone != "" {
-		updateQuery += " phone = ?,"
-		values = append(values, req.Phone)
+		atmLocation.Phone = req.Phone
 	}
 
 	if req.Fax != "" {
-		updateQuery += " fax = ?,"
-		values = append(values, req.Fax)
+		atmLocation.Fax = req.Fax
 	}
 
 	if req.Bizhour != "" {
-		updateQuery += " biz_hour = ?,"
-		values = append(values, req.Bizhour)
+		atmLocation.BizHour = req.Bizhour
 	}
 
 	if req.Latitude != "" {
-		updateQuery += " latitude = ?,"
-		values = append(values, req.Latitude)
+		atmLocation.Latitude = req.Latitude
 	}
 
 	if req.Longitude != "" {
-		updateQuery += " longitude = ?,"
-		values = append(values, req.Longitude)
+		atmLocation.Longitude = req.Longitude
 	}
 
-	// Menghilangkan koma terakhir dari query
-	updateQuery = strings.TrimSuffix(updateQuery, ",")
+	atmLocation.Modified = time.Now().Format(time.RFC3339)
 
-	updateQuery += " WHERE id = ?"
-	values = append(values, idInt)
-
-	_, err = db.Exec(updateQuery, values...)
-
-	if err != nil {
+	// Lakukan perubahan pada database
+	if err := db.Unscoped().Omit("created_at", "updated_at", "deleted_at").Save(&atmLocation).Error; err != nil {
 		c.AbortWithError(500, err)
 		return
 	}
