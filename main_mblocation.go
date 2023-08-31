@@ -7,12 +7,24 @@ import (
 )
 
 func main() {
-	gin.SetMode(gin.ReleaseMode)
+	gin.SetMode(gin.DebugMode)
 	r := gin.New()
-	r.Use(L.JSONLogMiddleware())
 	v := r.Group("/mbank/v1/location/")
 	{
-		v.POST("inquiry/", L.MbLocInq)
+		//api buat read
+		v.GET("inquiry/", L.MbLocInq)
+		v.DELETE("inquiry/delete-atm/:id", L.MbDeleteATM)
+		v.DELETE("inquiry/delete-bank/:id", L.MbDeleteBank)
+		v.POST("inquiry/bank/add", L.MbBankAdd)
+		v.POST("inquiry/atm/add", L.MbAtmAdd)
+		v.PUT("inquiry/bank/update/:id", L.MbBankUpdate)
+		v.PUT("inquiry/atm/update/:id", L.MbAtmUpdate)
+		//api buat add, delete, update
 	}
-	r.Run(":80") // listen and serve on 0.0.0.0:80
+	r.Run(":8070") // listen and serve on 0.0.0.0:8070
 }
+
+/*
+	GET --> untuk khusus get data, jadi gak pake request
+	sisanya pake body
+*/
